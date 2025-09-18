@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\InitializeTenantFromHeader;
+use App\Http\Middleware\ProxyRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
@@ -17,50 +19,17 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware('api')->middleware(\App\Http\Middleware\InitializeTenantFromHeader::class)->group(function () {
-    Route::any('/accounting/{path}', function (\Illuminate\Http\Request $request, $path) {
-        // 🟢 Prepare headers (filter out problematic ones)
-        $headers = collect($request->headers->all())
-            ->except(['host', 'content-length'])
-            ->map(fn($values) => $values[0] ?? '')
-            ->toArray();
+     Route::prefix('api/v1')->middleware('api')->middleware(InitializeTenantFromHeader::class)->group(function () {
+        Route::any('accounting/{path?}', fn() => null)
+            ->where('path', '.*')
+            ->middleware([ProxyRequest::class . ':http://nginx_accounting/api/v1']);
 
-        // 🟢 Prepare request options (query + body depending on content type)
-        $options = [
-            'query' => $request->query(),
-        ];
-
-        if ($request->isJson()) {
-            $options['json'] = $request->json()->all();
-        } elseif (str_starts_with($request->header('Content-Type', ''), 'multipart/form-data')) {
-            $options['multipart'] = collect($request->allFiles())->map(function ($file, $key) {
-                return [
-                    'name'     => $key,
-                    'contents' => fopen($file->getRealPath(), 'r'),
-                    'filename' => $file->getClientOriginalName(),
-                ];
-            })->values()->all();
-
-            // add normal fields too
-            foreach ($request->except(array_keys($request->allFiles())) as $key => $value) {
-                $options['multipart'][] = [
-                    'name'     => $key,
-                    'contents' => $value,
-                ];
-            }
-        } else {
-            $options['form_params'] = $request->all();
-        }
-
-        // 🟢 Forward request to accounting service
-        $response = Http::withHeaders($headers)
-            ->send($request->method(), "http://nginx_accounting/api/v1/$path", $options);
-
-        // 🟢 Return response safely (remove encoding/length headers)
-        return response($response->body(), $response->status())
-            ->withHeaders(collect($response->headers())
-                ->except(['transfer-encoding', 'content-encoding', 'content-length'])
-                ->toArray()
-            );
-    })->where('path', '.*');
-});
+        Route::any('project-management/{path?}', fn() => null)
+            ->where('path', '.*')
+            ->middleware([ProxyRequest::class . ':http://nginx_project_management/api/v1']);
+            
+        Route::any('hr/{path?}', fn() => null)
+            ->where('path', '.*')
+            ->middleware([ProxyRequest::class . ':http://nginx_hr/api/v1']);
+    });
+ 

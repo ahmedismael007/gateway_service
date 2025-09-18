@@ -51,7 +51,7 @@ class AuthController extends Controller
         $tenant = $user->tenants()->first();
 
         return (new UserResource($user))
-            ->additional(['message' => trans('auth.login.success'), 'token' => $token, 'tenant' => $tenant['id']])
+            ->additional(['message' => trans('auth.login.success'), 'token' => $token, 'tenant_id' => $tenant['id']])
             ->response()
             ->setStatusCode(200);
     }
